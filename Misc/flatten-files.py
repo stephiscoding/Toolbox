@@ -11,8 +11,6 @@ except IndexError:
     print("Please specify a source and destination directory.")
     exit()
 
-files_to_move = []
-
 for root, dirs, files in os.walk(source_dir):
     for file in files:
         full_path = os.path.join(root, file)
