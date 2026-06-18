@@ -1,4 +1,4 @@
-from unifi-network-api import UnifiNetworkAPI
+from lib.unifi_network_api import UnifiNetworkAPI
 
 controller_url = ""
 username = ""

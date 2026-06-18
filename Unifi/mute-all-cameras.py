@@ -1,4 +1,4 @@
-from unifi-protect-api import UnifiProtectAPI
+from lib.unifi_protect_api import UnifiProtectAPI
 import requests
 import time
 
