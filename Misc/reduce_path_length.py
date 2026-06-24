@@ -1,19 +1,21 @@
 # can you guess which system necessitated writing this script? (hint: it rhymes with scarepoint!)
 # analyses a directory for paths longer than a specified length. if it finds any, it gives you the option to rename the file,
 # or any of the folders that it sits in.
-# I wrote this script while running on four hours of sleep. please forgive me. however much you might hate this code, I hate it more :D
 
 import json
 import os
+import readline
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 try:
-    source_dir = sys.argv[1]
+    source_dir = Path(sys.argv[1])
     max_path_length = int(sys.argv[2])
 except IndexError:
     print("Please provide the source directory and the maximum path length.")
+    exit(1)
 
 number_of_long_paths = 0
 
@@ -32,128 +34,164 @@ easy_wins = {
     "CERTIFICATE": "CERT",
     "Applications": "Apps",
     "Assessment": "Assmnt",
+    "assessment": "assmnt",
+    "Version ": "V",
+    "version ": "V",
 }
+
+
+def load_json_dict(filename):
+    try:
+        with open(filename, "r") as f:
+            return json.load(f)
+    except:
+        print(f"Warning: {filename} not found. Starting fresh.")
+        return {}
+
+
+def load_json_set(filename):
+    try:
+        with open(filename, "r") as f:
+            return set(json.load(f))
+    except:
+        print(f"Warning: {filename} not found. Starting fresh.")
+        return set([])
+
+
+folder_renames = load_json_dict("folder_renames.json")
+file_renames = load_json_dict("file_renames.json")
+files_to_delete = load_json_set("files_to_delete.json")
+
+
+def calculate_path_length(file: Path, source_dir: Path):
+    return len(get_relative_path(file, source_dir))
+
+
+# returns a string of the full path, minus the directories above source_dir
+def get_relative_path(path: Path, source_dir: Path):
+    return str(path.relative_to(source_dir.parent))
+
+
+def apply_known_renames(effective_path: str) -> str:
+    """Applies easy wins and known folder renames to a path string."""
+    # Note: Since the rename maps (easy_wins, folder_renames) are string-based
+    # and replacements can cascade or introduce errors, this must remain a string operation.
+    path = effective_path
+
+    # Apply easy wins
+    for easy_win, replacement in easy_wins.items():
+        if easy_win in path:
+            path = path.replace(easy_win, replacement)
+
+    # Apply known folder renames
+    for folder, new_name in folder_renames.items():
+        if folder in path:
+            path = path.replace(folder, new_name)
+
+    # Apply known file renames
+    for file, new_name in file_renames.items():
+        if file in path:
+            path = path.replace(file, new_name)
+    return path
+
+
 try:
-    with open("folder_renames.json", "r") as f:
-        folder_renames = json.load(f)
-except:
-    folder_renames = {}
-
-print(folder_renames)
-
-
-# the check pass - this finds any offending file_names/folders
-try:
-    for root, dirs, file_names in os.walk(source_dir):
-        for file_name in file_names:
-            full_path = os.path.join(root, file_name)
-            # remove the root part of the path - we only want to know the length of the path from the folder the user specifies
-            source_dir_last = source_dir.split("/")[-1]
-            split_path = full_path.split(source_dir_last)[-1]
-            local_path = "".join([source_dir_last, split_path])
-
-            if len(local_path) > max_path_length:
+    for current_dir, dir_name, files in source_dir.walk():
+        for file_name in files:
+            file_path = current_dir / file_name
+            if (
+                calculate_path_length(file_path, source_dir) > max_path_length
+                and get_relative_path(file_path, source_dir) not in files_to_delete
+            ):
+                effective_path = get_relative_path(file_path, source_dir)
+                original_path = effective_path
                 print(f"The file '{file_name}' has too long of a path!")
                 print(
                     textwrap.dedent(f"""
                     Full path:
-                    {local_path}
-                    Path length: {len(local_path)}
+                    {effective_path}
+                    Path length: {len(effective_path)}
                     """)
                 )
-                print("Attempting easy wins...")
-                for easy_win in easy_wins:
-                    if easy_win in local_path:
-                        local_path = local_path.replace(easy_win, easy_wins[easy_win])
-                print("Attemping known folder renames...")
-                for folder in folder_renames:
-                    if folder in local_path:
-                        local_path = local_path.replace(folder, folder_renames[folder])
+                print("Attempting easy wins and applying known renames...")
+                effective_path = apply_known_renames(effective_path)
                 print(
                     textwrap.dedent(f"""
                     Path updated to:
-                    {local_path}
+                    {effective_path}
                     New path length:
-                    {len(local_path)}
+                    {len(effective_path)}
                     """)
                 )
-                if len(local_path) < max_path_length:
-                    print("Path sufficiently shortened.")
-                    print("=" * max_path_length)
-                else:
-                    while len(local_path) > max_path_length:
-                        print(
-                            f"""
-                            Path still {len(local_path) - max_path_length} chars too long.
-                            Current path: {local_path}
-                            Biggest offending folders:
-                            """
+                while (
+                    len(effective_path) > max_path_length
+                    and get_relative_path(file_path, source_dir) not in files_to_delete
+                ):
+                    print(
+                        textwrap.dedent(f"""
+                        Path still {len(effective_path) - max_path_length} chars too long.
+                        Current path: {effective_path}
+                        Biggest offending folders:
+                        """)
+                    )
+                    # we want to get each folder individually, so that the user can see which are the biggest culprits (i.e. have the longest names).
+                    folders_in_path = Path(effective_path).parent.parts
+                    print(folders_in_path)
+                    sorted_folders_in_path = sorted(
+                        folders_in_path,
+                        key=lambda folder: len(folder),
+                        reverse=True,
+                    )
+                    for index, folder in enumerate(sorted_folders_in_path):
+                        print(f"{index + 1}: {folder}", end="")
+                        if folder in folder_renames.values():
+                            print(" -> already renamed")
+                        else:
+                            print()
+                    # get the current file name
+                    file_name = Path(effective_path).name
+                    print(
+                        "Type 'f' followed by the folder number to rename the folder. Type 'r' to rename the file. Type 'd' to delete the file. Type 'o' followed by the folder number to view it in finder."
+                    )
+                    selection = input("Selection: ")
+                    if "f" in selection:
+                        folder_to_rename = int(selection[1:]) - 1
+                        original_folder_name = sorted_folders_in_path[folder_to_rename]
+                        new_folder_name = input(
+                            f"New name for {original_folder_name}: "
                         )
-                        # we want to get each folder individually, so that the user can see which are the biggest culprits (i.e. have the longest names).
-                        folders_in_path = {}
-                        for index, folder in enumerate(local_path.split("/")[0:-1]):
-                            folders_in_path[folder] = local_path.split("/")[:index]
-                        sorted_folders_in_path = sorted(
-                            folders_in_path.keys(),
-                            key=lambda folder: len(folder),
-                            reverse=True,
+                        folder_renames[original_folder_name] = new_folder_name
+                        effective_path = effective_path.replace(
+                            original_folder_name,
+                            new_folder_name,
                         )
-                        for index, folder in enumerate(sorted_folders_in_path):
-                            print(f"{index + 1}: {folder}")
-                        print(
-                            "Type 'f' followed by the folder number to rename the folder. Type 'r' to rename the file. Type 'o' followed by the folder number to view it in finder."
+                    elif "r" in selection:
+                        new_file_name = input("Enter the new name for the file: ")
+                        file_renames[file_name] = new_file_name
+                        effective_path = effective_path.replace(
+                            file_name, new_file_name
                         )
-                        selection = input("Selection: ")
-                        if "f" in selection:
-                            folder_to_rename = int(selection[1:]) - 1
-                            new_folder_name = input(
-                                "Enter the new name for the folder: "
-                            )
-                            folder_renames[sorted_folders_in_path[folder_to_rename]] = (
-                                new_folder_name
-                            )
-                            local_path = local_path.replace(
-                                sorted_folders_in_path[folder_to_rename],
-                                new_folder_name,
-                            )
-                        elif "r" in selection:
-                            new_file_name = input(
-                                "Enter the new name for the file_name: "
-                            )
-                            local_path = local_path.replace(file_name, new_file_name)
-                        elif "o" in selection:
-                            folder_to_open = sorted_folders_in_path[
-                                int(selection[1:]) - 1
-                            ]
-                            # we may have already renamed the folder. let's find the original folder name.
-                            for old_name, new_name in folder_renames.items():
-                                if new_name == folder_to_open:
-                                    folder_to_open = old_name
-                            folder_path = (
-                                full_path.split(folder_to_open)[0] + folder_to_open
-                            )
-                            print(folder_path)
-                            subprocess.run(["open", folder_path])
-                    print("Path sufficiently shortened.")
-                    print("=" * max_path_length)
-
-                number_of_long_paths += 1
+                    elif "o" in selection:
+                        folder_to_open = sorted_folders_in_path[int(selection[1:]) - 1]
+                        # we may have already renamed the folder. let's find the original folder name.
+                        for old_name, new_name in folder_renames.items():
+                            if new_name == folder_to_open:
+                                folder_to_open = old_name
+                        folder_path = source_dir.resolve().parent / Path(
+                            original_path.split(folder_to_open)[0] + folder_to_open
+                        )
+                        print(folder_path)
+                        subprocess.run(["open", folder_path])
+                    elif "d" in selection:
+                        files_to_delete.add(get_relative_path(file_path, source_dir))
+                print("Path sufficiently shortened.")
+                print("=" * max_path_length)
 except KeyboardInterrupt:
-    print("Saving folder renames...")
+    print("\nSaving renames...")
     with open("folder_renames.json", "w+") as f:
         json.dump(folder_renames, f, ensure_ascii=False, indent=4)
+    with open("file_renames.json", "w+") as f:
+        json.dump(file_renames, f, ensure_ascii=False, indent=4)
+    with open("files_to_delete.json", "w+") as f:
+        json.dump(list(files_to_delete), f, ensure_ascii=False, indent=4)
     exit(0)
-
-if number_of_long_paths > 0:
-    # time for the main event - let's rename ALL the files and folders based off the previous loop.
-    for root, dirs, file_names in os.walk(source_dir):
-        for file_name in file_names:
-            full_path = os.path.join(root, file_name)
-            new_path = full_path
-            for easy_win in easy_wins:
-                if easy_win in new_path:
-                    new_path = new_path.replace(easy_win, easy_wins[easy_win])
-            for folder in folder_renames:
-                if folder in new_path:
-                    new_path = new_path.replace(folder, folder_renames[folder])
-            print(f"Renaming {full_path} to {new_path}")
