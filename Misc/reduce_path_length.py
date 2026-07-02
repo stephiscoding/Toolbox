@@ -10,6 +10,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pyperclip
+
 try:
     source_dir = Path(sys.argv[1])
     max_path_length = int(sys.argv[2])
@@ -17,11 +19,10 @@ except IndexError:
     print("Please provide the source directory and the maximum path length.")
     exit(1)
 
-number_of_long_paths = 0
-
 # some universal adjustments to paths that may make the path just short enough.
 easy_wins = {
     " and ": "&",
+    " & ": "&",
     " - ": "-",
     "( ": "(",
     " )": ")",
@@ -29,14 +30,29 @@ easy_wins = {
     " .": ".",
     ", ": ",",
     "..": ".",
-    "certificate": "cert",
+    "certificate ii ": "cert2 ",
+    "Certificate II ": "Cert2 ",
+    "CERTIFICATE II ": "CERT2 ",
+    "certificate iii ": "cert2 ",
+    "Certificate III ": "Cert3 ",
+    "CERTIFICATE III ": "CERT3 ",
+    "certificate iv ": "cert4 ",
+    "Certificate IV ": "Cert4 ",
+    "CERTIFICATE IV ": "CERT4 ",
     "Certificate": "Cert",
+    "certificate": "cert",
     "CERTIFICATE": "CERT",
+    "CERT II ": "CERT2 ",
+    "CERT III ": "CERT3 ",
     "Applications": "Apps",
     "Assessment": "Assmnt",
     "assessment": "assmnt",
     "Version ": "V",
     "version ": "V",
+    "Service": "Srvc",
+    "service": "srvc",
+    "Information": "Info",
+    "information": "info",
 }
 
 
@@ -95,9 +111,11 @@ def apply_known_renames(effective_path: str) -> str:
     return path
 
 
+done = 0
 try:
     for current_dir, dir_name, files in source_dir.walk():
         for file_name in files:
+            done += 1
             file_path = current_dir / file_name
             if (
                 calculate_path_length(file_path, source_dir) > max_path_length
@@ -136,7 +154,6 @@ try:
                     )
                     # we want to get each folder individually, so that the user can see which are the biggest culprits (i.e. have the longest names).
                     folders_in_path = Path(effective_path).parent.parts
-                    print(folders_in_path)
                     sorted_folders_in_path = sorted(
                         folders_in_path,
                         key=lambda folder: len(folder),
@@ -157,6 +174,7 @@ try:
                     if "f" in selection:
                         folder_to_rename = int(selection[1:]) - 1
                         original_folder_name = sorted_folders_in_path[folder_to_rename]
+                        pyperclip.copy(original_folder_name)
                         new_folder_name = input(
                             f"New name for {original_folder_name}: "
                         )
@@ -166,6 +184,7 @@ try:
                             new_folder_name,
                         )
                     elif "r" in selection:
+                        pyperclip.copy(file_name)
                         new_file_name = input("Enter the new name for the file: ")
                         file_renames[file_name] = new_file_name
                         effective_path = effective_path.replace(
@@ -184,9 +203,80 @@ try:
                         subprocess.run(["open", folder_path])
                     elif "d" in selection:
                         files_to_delete.add(get_relative_path(file_path, source_dir))
-                print("Path sufficiently shortened.")
+                print(f"Path sufficiently shortened. Completed: {done}")
                 print("=" * max_path_length)
-except KeyboardInterrupt:
+                print("\nExecuting renames...")
+
+    input(
+        "Ready to begin filesystem modification. Press Enter to continue, or Ctrl-C to exit..."
+    )
+    # 1. Easy Wins (Applying to the actual files/folders on disk)
+    easy_tasks = []
+    try:
+        for p in source_dir.rglob("*"):
+            old_name = p.name
+            new_name = old_name
+            for easy_win, replacement in easy_wins.items():
+                if easy_win in new_name:
+                    new_name = new_name.replace(easy_win, replacement)
+            if new_name != old_name:
+                easy_tasks.append((p, new_name))
+    except Exception as e:
+        print(f"Error during easy wins collection: {e}")
+
+    # Execute easy wins depth-first (children before parents)
+    easy_tasks.sort(key=lambda x: len(x[0].parts), reverse=True)
+    for p, new_name in easy_tasks:
+        if p.exists():
+            try:
+                print(f"Applying easy win: {p.name} -> {new_name}")
+                p.rename(p.with_name(new_name))
+            except Exception as e:
+                print(f"Error applying easy win to {p}: {e}")
+
+    # 2. File Renames
+    for old_name, new_name in file_renames.items():
+        try:
+            for p in source_dir.rglob(old_name):
+                if p.is_file() and p.name == old_name:
+                    print(f"Renaming file: {p.name} -> {new_name}")
+                    p.rename(p.with_name(new_name))
+        except Exception as e:
+            print(f"Error renaming files matching '{old_name}': {e}")
+
+    # 3. Folder Renames (Depth-First)
+    folder_tasks = []
+    for old_name, new_name in folder_renames.items():
+        try:
+            for p in source_dir.rglob(old_name):
+                if p.is_dir() and p.name == old_name:
+                    folder_tasks.append((p, new_name))
+        except Exception as e:
+            print(f"Error collecting folder renames for '{old_name}': {e}")
+
+    # Sort depth-first (deepest first) to prevent breaking paths
+    folder_tasks.sort(key=lambda x: len(x[0].parts), reverse=True)
+    for p, new_name in folder_tasks:
+        if p.exists():
+            try:
+                print(f"Renaming folder: {p.name} -> {new_name}")
+                p.rename(p.with_name(new_name))
+            except Exception as e:
+                print(f"Error renaming folder {p}: {e}")
+
+    # 4. Files to Delete
+    for rel_path_str in files_to_delete:
+        try:
+            # Resolve path relative to source_dir
+            p = source_dir / rel_path_str
+            if p.exists():
+                print(f"Deleting file: {rel_path_str}")
+                p.unlink()
+        except Exception as e:
+            print(f"Error deleting {rel_path_str}: {e}")
+
+    print("Renames completed.\n")
+finally:
     print("\nSaving renames...")
     with open("folder_renames.json", "w+") as f:
         json.dump(folder_renames, f, ensure_ascii=False, indent=4)
