@@ -16,5 +16,5 @@ Takes positional command line arguments:
 
 Example:
 ```bash
-python find-device-by-MAC.py d8:b3:75:a5:26:9c vv
+python find_device_by_MAC.py d8:b3:75:a5:26:9c vv
 ```
