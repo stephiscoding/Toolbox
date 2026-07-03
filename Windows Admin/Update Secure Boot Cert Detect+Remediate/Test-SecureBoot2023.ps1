@@ -1,11 +1,3 @@
-$sharePath  = 'C:\Temp'
-$hostname   = hostname
-$version    = $PSVersionTable.PSVersion.ToString()
-$datetime   = Get-Date -F 'yyyyMMddHHmmss'
-$filename   = "Test-SecureBoot2023-${hostname}-${version}-${datetime}.txt"
-$Transcript = Join-Path -Path $sharePath -ChildPath $filename
-Start-Transcript
-
 $ErrorActionPreference = "SilentlyContinue"
 try
 {
@@ -33,15 +25,12 @@ try
     exit 0
 }
 
-$kekText = [System.Text.Encoding]::Unicode.GetString($kek.Bytes)
-$dbText  = [System.Text.Encoding]::Unicode.GetString($db.Bytes)
+$kekText = [System.Text.Encoding]::ASCII.GetString($kek.Bytes)
+$dbText  = [System.Text.Encoding]::ASCII.GetString($db.Bytes)
 
 $HasKEK2023 = $kekText -match "Microsoft Corporation KEK 2K CA 2023"
 $HasWindowsUEFICA2023 = $dbText -match "Windows UEFI CA 2023"
 $HasMicrosoftUEFICA2023 = $dbText -match "Microsoft UEFI CA 2023"
-
-Write-Debug $kekText
-Write-Debug $dbText
 
 if (
     $HasKEK2023 -and
@@ -53,7 +42,6 @@ if (
 } else
 {
     # if any of the certificates are not installed, we need to run the remediation component
-    Write-Information "Initiating remediation..."
     exit 1
 }
 
