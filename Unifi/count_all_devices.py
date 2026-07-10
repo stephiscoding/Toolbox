@@ -1,8 +1,10 @@
+import os
+
 from lib.unifi_network_api import UnifiNetworkAPI
 
-controller_url = ""
-username = ""
-password = ""
+controller_url = os.getenv("CONTROLLER_URL")
+username = os.getenv("USERNAME")
+password = os.getenv("PASSWORD")
 
 api = UnifiNetworkAPI(controller_url, username, password)
 

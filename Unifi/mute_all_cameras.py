@@ -1,6 +1,11 @@
-from lib.unifi_protect_api import UnifiProtectAPI
-import requests
+import os
 import time
+
+import requests
+from lib.unifi_protect_api import UnifiProtectAPI
+
+api_key = os.getenv("API_KEY")
+
 
 def get_company_from_mac(mac_address):
     response = requests.get(
@@ -10,22 +15,23 @@ def get_company_from_mac(mac_address):
     time.sleep(0.1)
     return response.text
 
-api_key = ""
 
 if __name__ == "__main__":
     api = UnifiProtectAPI("https://api.ui.com", api_key)
     sites = api.get_sites()
     for site in sites:
-        print(f"Checking site {site["reportedState"]["name"]}...")
+        print(f"Checking site {site['reportedState']['name']}...")
         try:
             cameras = api.get_all_cameras(site["id"])
             for camera in cameras:
                 # check that the camera is a Unifi camera - we can only disable mics on first-party cameras.
                 is_unifi_camera = get_company_from_mac(camera["mac"]) == "Ubiquiti Inc"
                 if camera["isMicEnabled"] != False and is_unifi_camera:
-                    print(f"Camera {camera["name"]} has microphone enabled! Disabling...")
+                    print(
+                        f"Camera {camera['name']} has microphone enabled! Disabling..."
+                    )
                     api.disable_camera_microphone(site["id"], camera["id"])
                 else:
-                    print(f"Camera {camera["name"]} already has microphone disabled.")
+                    print(f"Camera {camera['name']} already has microphone disabled.")
         except Exception:
             print("Error accessing this site. Is the user the owner of this site?")
