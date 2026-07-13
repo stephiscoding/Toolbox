@@ -19,42 +19,6 @@ except IndexError:
     print("Please provide the source directory and the maximum path length.")
     exit(1)
 
-# some universal adjustments to paths that may make the path just short enough.
-easy_wins = {
-    " and ": "&",
-    " & ": "&",
-    " - ": "-",
-    "( ": "(",
-    " )": ")",
-    "  ": " ",
-    " .": ".",
-    ", ": ",",
-    "..": ".",
-    "certificate ii ": "cert2 ",
-    "Certificate II ": "Cert2 ",
-    "CERTIFICATE II ": "CERT2 ",
-    "certificate iii ": "cert2 ",
-    "Certificate III ": "Cert3 ",
-    "CERTIFICATE III ": "CERT3 ",
-    "certificate iv ": "cert4 ",
-    "Certificate IV ": "Cert4 ",
-    "CERTIFICATE IV ": "CERT4 ",
-    "Certificate": "Cert",
-    "certificate": "cert",
-    "CERTIFICATE": "CERT",
-    "CERT II ": "CERT2 ",
-    "CERT III ": "CERT3 ",
-    "Applications": "Apps",
-    "Assessment": "Assmnt",
-    "assessment": "assmnt",
-    "Version ": "V",
-    "version ": "V",
-    "Service": "Srvc",
-    "service": "srvc",
-    "Information": "Info",
-    "information": "info",
-}
-
 
 def load_json_dict(filename):
     try:
@@ -77,6 +41,8 @@ def load_json_set(filename):
 folder_renames = load_json_dict("folder_renames.json")
 file_renames = load_json_dict("file_renames.json")
 files_to_delete = load_json_set("files_to_delete.json")
+# some universal adjustments to paths that may make the path just short enough.
+easy_wins = load_json_dict("easy_wins.json")
 
 
 def calculate_path_length(file: Path, source_dir: Path):
@@ -205,7 +171,6 @@ try:
                         files_to_delete.add(get_relative_path(file_path, source_dir))
                 print(f"Path sufficiently shortened. Completed: {done}")
                 print("=" * max_path_length)
-                print("\nExecuting renames...")
 
     input(
         "Ready to begin filesystem modification. Press Enter to continue, or Ctrl-C to exit..."
@@ -235,24 +200,22 @@ try:
                 print(f"Error applying easy win to {p}: {e}")
 
     # 2. File Renames
-    for old_name, new_name in file_renames.items():
-        try:
-            for p in source_dir.rglob(old_name):
-                if p.is_file() and p.name == old_name:
-                    print(f"Renaming file: {p.name} -> {new_name}")
-                    p.rename(p.with_name(new_name))
-        except Exception as e:
-            print(f"Error renaming files matching '{old_name}': {e}")
+    for p in source_dir.rglob("*"):
+        if p.is_file() and p.name in file_renames:
+            try:
+                print(f"Renaming file: {p.name} -> {file_renames[p.name]}")
+                p.rename(p.with_name(file_renames[p.name]))
+            except Exception as e:
+                print(f"Error renaming file '{p.resolve()}': {e}")
 
     # 3. Folder Renames (Depth-First)
     folder_tasks = []
-    for old_name, new_name in folder_renames.items():
+    for p in source_dir.rglob("*"):
         try:
-            for p in source_dir.rglob(old_name):
-                if p.is_dir() and p.name == old_name:
-                    folder_tasks.append((p, new_name))
+            if p.is_dir() and p.name in folder_renames:
+                folder_tasks.append((p, folder_renames[p.name]))
         except Exception as e:
-            print(f"Error collecting folder renames for '{old_name}': {e}")
+            print(f"Error collecting folder renames for '{p.resolve()}': {e}")
 
     # Sort depth-first (deepest first) to prevent breaking paths
     folder_tasks.sort(key=lambda x: len(x[0].parts), reverse=True)
