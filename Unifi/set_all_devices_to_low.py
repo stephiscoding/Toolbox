@@ -26,33 +26,38 @@ for site in sites:
     # get basic info for all devices at the site
     devices = api.get_devices(site)
     for device in devices:
-        # if the device is an AP
-        if device["type"].lower() == "uap":
-            print(f"Checking device {device['name']}...")
-            retries = 0
-            tx_is_low = check_tx_power(api, site, device)
-            if not tx_is_low:
-                # it should really only take one attempt to set the broadcast power. But it can't hurt to verify and retry if that attempt doesn't work!
-                while (not tx_is_low) and retries <= 2:
-                    print(
-                        f"{device['name']} has some or all radios broadcasting above low power. Fixing..."
-                    )
-                    # sometimes (e.g. a device is offline), setting the tx power fails, and the API throws a response code that isn't a 200.
-                    try:
-                        api.set_device_tx_power(site, device)
+        try:
+            # if the device is an AP
+            if device["type"].lower() == "uap":
+                print(f"Checking device {device['name']}...")
+                retries = 0
+                tx_is_low = check_tx_power(api, site, device)
+                if not tx_is_low:
+                    # it should really only take one attempt to set the broadcast power. But it can't hurt to verify and retry if that attempt doesn't work!
+                    while (not tx_is_low) and retries <= 2:
                         print(
-                            "All radios set to low. Waiting 5 seconds, then verifying..."
+                            f"{device['name']} has some or all radios broadcasting above low power. Fixing..."
                         )
-                        time.sleep(5)
-                    except Exception as e:
-                        print("Error setting TX Power:", e)
-                    tx_is_low = check_tx_power(api, site, device)
-                    if not tx_is_low:
-                        print("TX Power not updated. Retrying...")
-                        retries += 1
-                    else:
-                        print("TX Power successfully set to low.")
-                if retries >= 2:
-                    print(f"ERROR: Failed to set TX power on {device['name']}.")
-            else:
-                print(f"{device['name']} is already set to low TX power on all radios.")
+                        # sometimes (e.g. a device is offline), setting the tx power fails, and the API throws a response code that isn't a 200.
+                        try:
+                            api.set_device_tx_power(site, device)
+                            print(
+                                "All radios set to low. Waiting 5 seconds, then verifying..."
+                            )
+                            time.sleep(5)
+                        except Exception as e:
+                            print("Error setting TX Power:", e)
+                        tx_is_low = check_tx_power(api, site, device)
+                        if not tx_is_low:
+                            print("TX Power not updated. Retrying...")
+                            retries += 1
+                        else:
+                            print("TX Power successfully set to low.")
+                    if retries >= 2:
+                        print(f"ERROR: Failed to set TX power on {device['name']}.")
+                else:
+                    print(
+                        f"{device['name']} is already set to low TX power on all radios."
+                    )
+        except:
+            print("Error checking/setting power to low. Device is likely offline.")
