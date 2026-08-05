@@ -18,6 +18,9 @@ Take a guess.
 ## Set Power Level To Low
 Sets the broadcast power of **all** APs to low. Used for compliance purposes. 
 
+## Get all devices
+Gets some basic info for all devices on a per site basis, and dumps it into a CSV.
+
 ## Find Device by MAC
 Finds a device given a MAC, and gives you some basic information about it - the name, what site it is adopted to, etc. 
 
