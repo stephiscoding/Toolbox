@@ -4,3 +4,6 @@
 *.json
 *.env
 *.csv
+*scratch*
+AP Power Levels*.html
+Unifi Camera Audio Report*.html
